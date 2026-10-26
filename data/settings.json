@@ -1,0 +1,7 @@
+{
+  "disabled_tools": [],
+  "deepseek_model": "deepseek-flash",
+  "downloads_dir": "data/downloads",
+  "workspace_dir": "workspace",
+  "app_port": 8000
+}

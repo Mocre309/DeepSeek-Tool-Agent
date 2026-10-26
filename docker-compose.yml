@@ -1,0 +1,22 @@
+services:
+  agent:
+    build: .
+    image: deepseek-tool-agent:0.1.0
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      NOTES_DB_PATH: /app/data/notes.sqlite3
+      CONVERSATION_DB_PATH: /app/data/conversations.sqlite3
+      DOWNLOADS_DIR: /app/data/downloads
+      WORKSPACE_DIR: /app/data/workspace
+      SETTINGS_FILE: /app/data/settings.json
+      ENVIRONMENT: prod
+    volumes:
+      # Long-term memory survives container restarts.
+      - agent-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  agent-data:
