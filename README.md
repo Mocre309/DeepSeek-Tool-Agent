@@ -1,8 +1,7 @@
-# DeepSeek Tool Agent（
+# DeepSeek Tool Agent（仅供个人展示）
 
 
-
-一个小而完整的**多模态工具调用 Agent**：LangChain 组装 ReAct 循环，DeepSeek 负责看图与推理，
+**多模态工具调用 Agent**：LangChain 组装 ReAct 循环，DeepSeek 负责看图与推理，
 FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时推给前端。
 
 Agent ：
