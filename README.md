@@ -1,18 +1,16 @@
-# DeepSeek Tool Agent
+# DeepSeek Tool Agent（
 
-> **只想拿来用？** 看 [使用说明（USAGE.md）](USAGE.md)：怎么启动、每个功能怎么点、数据在哪、出问题怎么办。
-> 这份 README 讲的是技术实现与设计取舍。
+
 
 一个小而完整的**多模态工具调用 Agent**：LangChain 组装 ReAct 循环，DeepSeek 负责看图与推理，
 FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时推给前端。
 
-它体量很小（一个服务、十个工具、一个页面），但把真正决定 Agent 能不能上线的几件事都做了一遍：
+Agent ：
 **流式输出、工具调用可视化、多模态读图、需要用户批准的危险操作、撤回与重写、会话持久化、
 按对话隔离的工作区域、运行时设置、循环护栏、离线可测、容器化**。
 
 ![Agent 一轮对话：两次工具调用 + 流式答案](screenshots/02-agent-turn.png)
 
-> 真实运行截图（DeepSeek 真实调用）：模型自己决定同时调用「时钟」和「计算器」，
 > 左栏是持久化的会话列表，中间卡片是工具调用的实时状态，底部是 token 用量与耗时。
 
 ## 会征求同意的下载
@@ -28,7 +26,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 同意状态存在 checkpointer 里，所以刷新页面后那张待批准卡片还会回来（`GET /api/sessions/{id}/pending`）。
 即使批准了，工具内部仍然会拒绝本机/内网地址、限制体积与超时——批准不等于放弃防护。
 
-## 多模态：把截图拖进来就能读
+## 多模态
 
 模型是 `deepseek-flash`（`input_modalities: ["text", "image"]`，1M 上下文）。
 上传一张界面截图，它把图里的 7 个工具标签、以及底部那行 `tokens 2841+167=3008 · 工具调用 1 · 耗时 8.05s`
@@ -38,7 +36,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 
 图片在浏览器里就用 canvas 缩到长边 1280、转 JPEG 再上传；后端按 MIME/张数/体积做白名单校验。
 
-## 运行时设置，改完立即生效
+## 设置
 
 右上角「⚙ 设置」打开配置面板（工具清单也只在这里，不在页面上罗列）：API Key、模型、工具开关、
 下载文件夹、默认工作区域、界面字号、界面配色。前几项写到 `data/settings.json` 并**热重建** Agent
@@ -48,7 +46,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 | --- | --- |
 | ![设置](screenshots/08-settings.png) | ![浅色](screenshots/09-light-theme.png) |
 
-## 会话不会丢
+## 会话
 
 会话消息（含图片）由 **LangGraph checkpointer + `AsyncSqliteSaver`** 落盘，会话元数据（标题 / 轮数 /
 最近活跃 / 分组 / 工作区域）单独一张表。重启服务后列表、历史、图片、待批准的请求都还在。
@@ -58,7 +56,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 | --- | --- |
 | ![会话列表](screenshots/06-conversations.png) | ![历史](screenshots/07-history-replay.png) |
 
-### 重命名与会话分组（支持拖拽）
+### 会话分组
 
 每个对话行的标题右侧有一个 **···** 菜单（悬停出现，点开是浮层）：
 
@@ -92,7 +90,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 拖拽用的是原生 HTML5 drag & drop（`draggable` + `DataTransfer`），没有引入任何库；
 触摸设备上走 `···` 菜单里的「移动到分组」，两种入口操作同一份后端状态。
 
-## 它能做什么
+## 工具的能力
 
 | 工具 | 作用 | 需要批准 | 为什么需要它 |
 | --- | --- | --- | --- |
@@ -114,7 +112,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 
 </details>
 
-## 让用户挑方案，而不是念清单
+## 会给出方案选项
 
 需要用户拍板时，模型会在回答末尾附一个 `options` 代码块；界面把这一块**从正文里摘掉**，
 渲染成可点击的选项 —— 点一项就把那句话作为下一轮消息发出去；也可以在最下面的输入框里
@@ -142,7 +140,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 
 ![重写后回答替换](screenshots/18-rewrite.png)
 
-## 本地文件读写：一个可配置的工作区域
+## 本地文件读写
 
 文件工具能读写本地文件，但**只能在工作区域（workspace）里**。这个目录在设置面板里可以改，
 默认是项目下的 `workspace/`。写文件同样走审批：模型说"我要写哪个文件"，你点「允许执行」才落盘，
@@ -150,7 +148,7 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 
 ![写文件（审批后）](screenshots/14-workspace-file.png)
 
-沙箱规则写在工具里，不靠提示词：
+沙箱规则写在工具里：
 
 - **一个根**：所有路径先 `resolve()` 再判断是否在根内，`../`、绝对路径、指向外面的符号链接
   全部拒绝（有单测覆盖，含 symlink 逃逸用例）
@@ -168,16 +166,6 @@ FastAPI 用 SSE 把「思考 → 调工具 → 组织答案」的全过程实时
 生产级替代方案（若要多用户）是换容器/微虚拟机隔离；这里的定位是本机单人使用，
 所以用"根目录约束 + 写审批"来换取可演示性和低运维成本。
 
-### 换模型不用改代码
-`GET https://api.deepseek.com/models` 实测当前可用模型（清单会变，所以写在文档里而不是写死）：
-
-| 模型 | 输入 | 上下文 | 说明 |
-| --- | --- | --- | --- |
-| `deepseek-flash` | text + image | 1M | **默认值**，原生多模态，也支持工具调用 |
-| `deepseek-v4-pro` | text | 1M | 纯文本，更强推理 |
-| `deepseek-reasoner` | text | — | 思考过程作为 `reasoning` 事件流式推出 |
-
-用纯文本模型时上传图片：前端按 `/api/health` 的 `supports_images` 直接禁用上传入口。
 
 ## 架构
 
@@ -258,25 +246,9 @@ uv run python -m app --host 0.0.0.0     # 临时对外开放
 uv run python -m app --reload           # 改代码自动重启
 ```
 
-> 直接用 `uv run uvicorn app.main:app --port 8000` 同样能跑，但那条路径的端口只认命令行，
+> 直接用 `uv run uvicorn app.main:app --port 8000` 同样能运行，但那条路径的端口只认命令行，
 > 不读 `.env`。
 
-**终端已经关了 / 进程还在后台跑时怎么停**（Windows）：
-
-```powershell
-# 1) 看谁占着 8000
-Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object OwningProcess
-
-# 2) 结束它（把 <PID> 换成上一步的 OwningProcess）
-Stop-Process -Id <PID> -Force
-
-# 或者一行搞定：把占用 8000 的进程全部结束
-Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-```
-
-停掉不会丢任何东西：会话在 `data/conversations.sqlite3`、长期记忆在 `data/notes.sqlite3`、
-设置覆盖在 `data/settings.json`、下载与工作区文件在 `data/downloads` 和 `workspace/`。
-唯一会中断的是"正在生成"的那一轮（它跟着 HTTP 连接跑）。
 
 Docker 方式：
 
@@ -289,17 +261,6 @@ docker compose down           # 停掉并移除容器（数据在 agent-data 卷
 > 环境变量，它的优先级高于 `.env`；否则请把真 key 写进 `.env`，或直接在界面「⚙ 设置」里填
 > （会写到 `data/settings.json`，优先级最高）。
 
-## 迁移到别处运行
-
-代码没有绑定路径或机器，整个目录可以拷走。要带的东西只有三类：
-
-| 带什么 | 为什么 |
-| --- | --- |
-| `app/` `tests/` `pyproject.toml` `uv.lock` | 代码 + 锁定的依赖版本（`uv sync` 靠它复现环境） |
-| `.env`（或环境变量 `DEEPSEEK_API_KEY`） | 被 `.gitignore` 排除，`git clone` 不会带上 |
-| `data/`、`workspace/`（可选） | 会话 / 记忆 / 设置 / 下载文件 / 工作区文件 |
-
-**不要带 `.venv/`**：里面有写死的解释器路径，到新机器 `uv sync` 重建即可。
 
 ```bash
 # 新机器（或新目录）上
@@ -307,17 +268,6 @@ uv sync
 cp .env.example .env                  # 填 key，或直接设 DEEPSEEK_API_KEY 环境变量
 uv run python -m app                  # 端口由 APP_PORT 决定（默认 8000）
 ```
-
-几个实际会碰到的点：
-
-- **拷 `data/` 前先停服务**。会话库是 SQLite + WAL，服务运行时直接拷会拿到不完整快照
-  （实测：运行中拷过去只剩 1 个会话；停掉再拷就完整）。
-- **路径是可迁移的**。`data/settings.json` 里的 `downloads_dir` / `workspace_dir` 以
-  **项目内相对路径**保存（如 `data/downloads`、`workspace`），启动时按项目根解析；
-  旧版本写进去的绝对路径会在启动时自动改写成相对路径。
-- **Linux / macOS 直接可跑**：已带 `tzdata`，时区不依赖系统库；路径统一走 `pathlib`。
-- **`--host 0.0.0.0` 才允许局域网访问**，但这套没有鉴权，别直接暴露公网。
-- 想连数据一起搬的省心做法是 Docker：数据都在 `agent-data` 卷里。
 
 ## API
 
@@ -359,11 +309,7 @@ SSE 事件（`event: <type>` + `data: <json>`）：
 | `usage` | `input_tokens, output_tokens, total_tokens, tool_calls, elapsed_ms` | 本轮结算 |
 | `error` / `done` | `message` / `session_id, awaitable? awaiting_approval` | 结束 |
 
-```bash
-curl -N -X POST http://127.0.0.1:8000/api/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message":"现在北京时间几点？顺便算一下 (1280*0.85)**2/7"}'
-```
+
 
 ## 几个刻意做的取舍
 
@@ -392,11 +338,6 @@ canvas 缩到长边 1280 转 JPEG 再上传，后端独立校验 MIME/张数/体
 切走只是停止往界面画、继续把 token 收进缓冲区；回合跑完照常写进历史，切回来就能看到。
 只有「停止」按钮和删除会话会真的中断它。
 
-**10. 工具的失败是「数据」而不是「异常」。** 搜索超时、网页 404、表达式非法、模型不支持图片，
-统一降级成可读字符串让模型自己决策；同时把 in-stream 异常的 traceback 记进日志（否则线上无从查起）。
-
-**11. 搜索做了 provider 链 + 熔断。** 主 provider 失败后冷却 120 秒，不把上游超时叠加到每个请求上。
-这是被真实网络环境（某些搜索引擎不可达）逼出来的设计。
 
 ## 测试
 
@@ -413,7 +354,6 @@ uv run ruff check .    # All checks passed!
 - `tests/test_agent_loop.py` — 脚本化假模型驱动的完整 ReAct 循环、多模态消息、失败收尾
 - `tests/test_api.py` — HTTP 契约：SSE 帧序列、图片校验、会话列表与删除
 
-全部离线可跑，CI 里不需要任何 API Key。
 
 ## 目录
 
@@ -439,21 +379,3 @@ data/                       # 运行时数据（gitignored）：settings.json / 
 workspace/                  # 文件工具的工作区域（gitignored，可在设置里改）
 Dockerfile / docker-compose.yml / .env.example
 ```
-
-## 已知限制
-
-- **设置面板等于本地管理后台**：它能改 API Key、改下载目录、开关工具。只适合本机使用，
-  **不要不带鉴权就暴露到公网**（真要上公网，至少加一层 Bearer 鉴权 + 速率限制）。
-- **图片以 base64 存在 checkpoint 里**：单进程 SQLite 够用，但库会随图片增长；多副本需要换
-  Postgres checkpointer，并把图片挪到对象存储。
-- **改下载目录/工作区域不迁移旧文件**：新设置只影响之后的读写，旧链接会失效。
-- **没有删除/改名工具**：故意不做——在"能写"之上再开放删除，风险和收益不成正比。
-- **关闭页面/刷新会取消当前流**：回合跟着 HTTP 流跑，切走对话不受影响（客户端继续读流），
-  但如果直接关标签页，服务端会收到断开并取消该轮——要彻底解耦需要把回合做成可断线续传的后台任务。
-- **撤回只作用于最后一轮**，且有待批准操作时会被拒绝（409）；它改的是会话状态，不回收磁盘上已写的文件。
-- **工具调用详情与思考过程不落库**：回放历史只恢复用户/助手消息（含图片），工具卡片和
-  `reasoning` 只在当轮流式展示。
-- **搜索依赖上游 HTML**：Bing/DuckDuckGo 改版会失效，所以做了双 provider + 熔断。
-- **前端 Markdown 是简化实现**：覆盖标题、列表、表格、代码块、引用、链接、粗斜体，
-  不支持嵌套强调、表格对齐语法与内联 HTML。
-- **Dockerfile 未在本机验证**：开发环境没有装 Docker，镜像构建请以你自己的环境为准。
